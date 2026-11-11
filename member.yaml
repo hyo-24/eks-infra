@@ -1,0 +1,54 @@
+# member.yaml — 회원 서비스: 앱(Deployment) + 내선번호(Service)
+# 화면(index.html, join.html)과 회원 API가 들어있는 서비스
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: member-service
+spec:
+  replicas: 2                      # Pod 2개 (한 개 죽어도 다른 하나가 버팀)
+  selector:
+    matchLabels:
+      app: member-service
+  template:
+    metadata:
+      labels:
+        app: member-service
+    spec:
+      containers:
+        - name: member-service
+          image: leehyoju24/member-service:latest
+          imagePullPolicy: Always # latest 태그라도 항상 새로 받아오게
+          ports:
+            - containerPort: 8081
+          env:
+            # RDS 주소: application.yml의 옛 주소 대신 새 RDS로 덮어쓰기
+            # ⚠️ <RDS_ENDPOINT>는 terraform apply 후 outputs의 rds_endpoint 값으로 교체
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://<RDS_ENDPOINT>:3306/logindockerdb"
+            # 아래 두 개는 Secret(비밀 보관함)에서 꺼내옴
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: JWT_SECRET
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: member-service
+  annotations:
+    # ALB가 "얘 살아있니?" 물어볼 주소 (actuator health — DB 연결까지 점검)
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+spec:
+  type: ClusterIP                  # 내선번호만 (외부 직접 접속 불가)
+  selector:
+    app: member-service
+  ports:
+    - port: 8081
+      targetPort: 8081

@@ -1,0 +1,161 @@
+==========================================
+ EKS 배포 검증 기록
+ 수집 시각: 2026년 10월 26일 월요일 19시 10분 54초 KST
+ ALB 주소: k8s-default-loginser-d9af0f8a41-2068962518.us-east-1.elb.amazonaws.com
+==========================================
+
+### 1. 노드 상태
+NAME                         STATUS   ROLES    AGE   VERSION               INTERNAL-IP   EXTERNAL-IP      OS-IMAGE                        KERNEL-VERSION                            CONTAINER-RUNTIME
+ip-10-0-1-14.ec2.internal    Ready    <none>   59m   v1.37.1-eks-39aca56   10.0.1.14     100.52.230.112   Amazon Linux 2023.12.20261021   6.18.54-121.166.amzn2023.x86_64 (amd64)   containerd://2.3.5+unknown
+ip-10-0-2-116.ec2.internal   Ready    <none>   58m   v1.37.1-eks-39aca56   10.0.2.116    3.84.47.205      Amazon Linux 2023.12.20261021   6.18.54-121.166.amzn2023.x86_64 (amd64)   containerd://2.3.5+unknown
+
+### 2. Pod 상태
+NAME                              READY   STATUS    RESTARTS   AGE   IP           NODE                         NOMINATED NODE   READINESS GATES
+auth-service-7d49d8cf5f-bhgpr     1/1     Running   0          30m   10.0.2.229   ip-10-0-2-116.ec2.internal   <none>           <none>
+auth-service-7d49d8cf5f-klvzl     1/1     Running   0          30m   10.0.1.27    ip-10-0-1-14.ec2.internal    <none>           <none>
+member-service-6c9c4b9fc9-2r577   1/1     Running   0          30m   10.0.2.124   ip-10-0-2-116.ec2.internal   <none>           <none>
+member-service-6c9c4b9fc9-t7v99   1/1     Running   0          30m   10.0.1.243   ip-10-0-1-14.ec2.internal    <none>           <none>
+
+### 3. 서비스 (ClusterIP)
+NAME             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+auth-service     ClusterIP   172.20.76.153   <none>        8080/TCP   30m
+kubernetes       ClusterIP   172.20.0.1      <none>        443/TCP    61m
+member-service   ClusterIP   172.20.134.96   <none>        8081/TCP   30m
+
+### 4. Ingress
+NAME                    CLASS   HOSTS   ADDRESS                                                                  PORTS   AGE
+login-service-ingress   alb     *       k8s-default-loginser-d9af0f8a41-2068962518.us-east-1.elb.amazonaws.com   80      30m
+
+### 5. Ingress 상세 (ALB 경로 분기 규칙)
+Name:             login-service-ingress
+Labels:           <none>
+Namespace:        default
+Address:          k8s-default-loginser-d9af0f8a41-2068962518.us-east-1.elb.amazonaws.com
+Ingress Class:    alb
+Default backend:  <default>
+Rules:
+  Host        Path  Backends
+  ----        ----  --------
+  *           
+              /internal   deny-internal:use-annotation (<error: services "deny-internal" not found>)
+              /auth       auth-service:8080 (10.0.2.229:8080,10.0.1.27:8080)
+              /           member-service:8081 (10.0.2.124:8081,10.0.1.243:8081)
+Annotations:  alb.ingress.kubernetes.io/actions.deny-internal:
+                {"type":"fixed-response","fixedResponseConfig":{"contentType":"text/plain","statusCode":"403","messageBody":"Forbidden"}}
+              alb.ingress.kubernetes.io/scheme: internet-facing
+              alb.ingress.kubernetes.io/target-type: ip
+Events:
+  Type    Reason                  Age   From     Message
+  ----    ------                  ----  ----     -------
+  Normal  SuccessfullyReconciled  30m   ingress  Successfully reconciled
+
+### 6. Load Balancer Controller
+NAME                                            READY   STATUS    RESTARTS   AGE
+aws-load-balancer-controller-85f75fdb96-mxrjd   1/1     Running   0          34m
+aws-load-balancer-controller-85f75fdb96-v2887   1/1     Running   0          34m
+NAME                        	NAMESPACE  	REVISION	UPDATED                            	STATUS  	CHART                             	APP VERSION
+aws-load-balancer-controller	kube-system	1       	2026-10-26 18:36:33.94088 +0900 KST	deployed	aws-load-balancer-controller-3.6.2	v3.6.2     
+
+### 7. Secret (값은 안 보임)
+NAME         TYPE     DATA   AGE
+app-secret   Opaque   2      32m
+
+### 8. Terraform 출력값
+lbc_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/AmazonEKSLoadBalancerControllerRole"
+rds_endpoint = "login-service-db.c6lgkimcmm92.us-east-1.rds.amazonaws.com"
+vpc_id = "vpc-0cc1db55e45f3109b"
+
+### 9. ALB 대상 그룹 상태
+--- arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:targetgroup/k8s-default-authserv-a1ddf764f4/f2ac5e0ecbe15f07
+-----------------------------------
+|      DescribeTargetHealth       |
++------+-----------+--------------+
+| Port |   State   |   Target     |
++------+-----------+--------------+
+|  8080|  healthy  |  10.0.1.27   |
+|  8080|  healthy  |  10.0.2.229  |
++------+-----------+--------------+
+--- arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:targetgroup/k8s-default-memberse-edf2d9c027/ef7b664221f51b37
+-----------------------------------
+|      DescribeTargetHealth       |
++------+-----------+--------------+
+| Port |   State   |   Target     |
++------+-----------+--------------+
+|  8081|  healthy  |  10.0.2.124  |
+|  8081|  healthy  |  10.0.1.243  |
++------+-----------+--------------+
+--- arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:targetgroup/my-target-group/5dd5eed434469996
+--- arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:targetgroup/my-tg-default/b999252f514307b7
+
+### 10. member-service 로그 (RDS 연결 확인)
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:649) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:710) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:128) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-11.0.20.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:107) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:107) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:107) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:107) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:165) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:77) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:492) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:113) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:83) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:72) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.valves.RemoteIpValve.invoke(RemoteIpValve.java:685) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:341) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:397) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:903) ~[tomcat-embed-core-11.0.20.jar!/:na]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1779) ~[tomcat-embed-core-11.0.20.jar!/:na]
+
+### 11. auth-service 로그
+2026-10-26T09:40:30.823Z  INFO 1 --- [auth-service] [           main] c.h.auth_service.AuthServiceApplication  : Starting AuthServiceApplication v0.0.1-SNAPSHOT using Java 25.0.4.1 with PID 1 (/app/app.jar started by root in /app)
+2026-10-26T09:40:36.603Z  INFO 1 --- [auth-service] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 8080 (http)
+2026-10-26T09:40:36.650Z  INFO 1 --- [auth-service] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-26T09:40:36.652Z  INFO 1 --- [auth-service] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.20]
+2026-10-26T09:40:40.169Z  INFO 1 --- [auth-service] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 8080 (http) with context path '/'
+2026-10-26T09:40:40.212Z  INFO 1 --- [auth-service] [           main] c.h.auth_service.AuthServiceApplication  : Started AuthServiceApplication in 11.593 seconds (process running for 13.638)
+2026-10-26T09:41:47.832Z  INFO 1 --- [auth-service] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-26T09:40:31.048Z  INFO 1 --- [auth-service] [           main] c.h.auth_service.AuthServiceApplication  : Starting AuthServiceApplication v0.0.1-SNAPSHOT using Java 25.0.4.1 with PID 1 (/app/app.jar started by root in /app)
+2026-10-26T09:40:36.706Z  INFO 1 --- [auth-service] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 8080 (http)
+2026-10-26T09:40:36.760Z  INFO 1 --- [auth-service] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+
+==========================================
+ API 동작 검증
+==========================================
+
+### A. GET /  (member-service 분기)
+HTTP 200
+
+### B. POST /auth/login  (Pod 간 통신 + JWT 발급)
+{"accessToken":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwicm9sZSI...(생략)","tokenType":"Bearer"}
+
+### C. GET /members/info  (JWT 서명 검증 통과 — 403은 role 체크 단계)
+HTTP/1.1 403 
+Date: Mon, 26 Oct 2026 10:11:23 GMT
+Content-Type: application/json
+Transfer-Encoding: chunked
+Connection: keep-alive
+
+{"timestamp":"2026-10-26T10:11:23.796Z","status":403,"error":"Forbidden","path":"/members/info"}
+### D. POST /internal/...  (ALB가 외부 접근 차단)
+HTTP/1.1 403 Forbidden
+Server: awselb/2.0
+Date: Mon, 26 Oct 2026 10:11:24 GMT
+Content-Type: text/plain; charset=utf-8
+Content-Length: 9
+Connection: keep-alive
+
+Forbidden
+==========================================
+ 수집 완료
+==========================================
+	Database JDBC URL [jdbc:mysql://login-service-db.c6lgkimcmm92.us-east-1.rds.amazonaws.com:3306/logindockerdb]
+	Database version: 8.4.11
+2026-10-26T09:40:41.941Z  INFO 1 --- [member-service] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-10-26T09:40:43.241Z  INFO 1 --- [member-service] [           main] c.h.m.MemberServiceApplication           : Started MemberServiceApplication in 18.082 seconds (process running for 19.38)
+	Database JDBC URL [jdbc:mysql://login-service-db.c6lgkimcmm92.us-east-1.rds.amazonaws.com:3306/logindockerdb]
+	Database version: 8.4.11
+2026-10-26T09:40:42.219Z  INFO 1 --- [member-service] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-10-26T09:40:43.422Z  INFO 1 --- [member-service] [           main] c.h.m.MemberServiceApplication           : Started MemberServiceApplication in 18.075 seconds (process running for 19.479)

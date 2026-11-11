@@ -1,0 +1,47 @@
+# auth.yaml — 인증 서비스: 앱(Deployment) + 내선번호(Service)
+# 로그인(/auth/login)을 처리. DB는 쓰지 않고, member에게 물어봐서 검증함
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: leehyoju24/login-service:latest   # auth 이미지 이름이 login-service 임
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            # auth가 member를 부를 주소: 옛 EC2 IP 대신 Service 이름(내선번호)으로
+            - name: MEMBER_SERVICE_URL
+              value: "http://member-service:8081"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: JWT_SECRET
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  annotations:
+    # auth는 화면이 없어서, 아까 추가한 actuator 헬스체크 주소를 알려줌
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+spec:
+  type: ClusterIP
+  selector:
+    app: auth-service
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,0 +1,40 @@
+# ingress.yaml — 정문(ALB) 안내판
+# 손님을 주소에 따라 알맞은 서비스로 보내고, 직원 전용 방(/internal)은 막음
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: login-service-ingress
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing   # 외부에 열린 정문
+    alb.ingress.kubernetes.io/target-type: ip           # Pod에 직접 연결(ClusterIP 사용 가능)
+    # /internal 로 오는 외부 손님은 정문에서 바로 403으로 거절
+    alb.ingress.kubernetes.io/actions.deny-internal: >
+      {"type":"fixed-response","fixedResponseConfig":{"contentType":"text/plain","statusCode":"403","messageBody":"Forbidden"}}
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          # 순서 중요: 막는 규칙과 좁은 규칙을 먼저, 포괄 규칙(/)을 마지막에
+          - path: /internal
+            pathType: Prefix
+            backend:
+              service:
+                name: deny-internal          # 위 annotation의 가짜 백엔드(거절 담당)
+                port:
+                  name: use-annotation
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: member-service
+                port:
+                  number: 8081
