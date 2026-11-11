@@ -249,6 +249,10 @@ terraform destroy
 ### 애플리케이션
 
 - **probe 추가** — readiness / liveness probe가 없어 Pod가 뜨는 즉시 트래픽을 받습니다.
+- **클러스터 모니터링** — 로컬에서는 Prometheus + Grafana로 Spring Boot actuator 지표를 수집해
+  대시보드를 구성해봤지만(앱 저장소 `monitoring/` 참고), EKS에는 아직 붙이지 않았습니다.
+  운영이라면 kube-prometheus-stack 또는 CloudWatch Container Insights로 클러스터와 Pod 지표를
+  함께 보고 알림까지 걸어야 합니다.
 - **actuator 포트 분리** — 운영이라면 `management.server.port`로 빼고 ALB 쪽에
   `healthcheck-port`를 지정해 외부 노출을 막는 것이 정석입니다.
 - **중복 가입 응답** — 현재 500입니다. 409 Conflict가 맞습니다.
