@@ -3,6 +3,11 @@ terraform {
     bucket = "hyoju-terraform-state-loginservice"
     key    = "eks/terraform.tfstate"
     region = "us-east-1"
+
+    # state 파일에는 RDS 비밀번호 같은 값이 평문으로 들어간다.
+    # (variable 에 sensitive = true 를 줘도 CLI 출력만 가려질 뿐 파일 안은 평문)
+    # 그래서 저장되는 쪽을 보호한다 — S3 서버 측 암호화를 명시.
+    encrypt = true
   }
 }
 

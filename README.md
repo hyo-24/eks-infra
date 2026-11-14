@@ -146,9 +146,16 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$(terraform output -raw lbc_role_arn)"
 
 # 4. 앱이 쓸 비밀 생성 (JWT_SECRET은 HS256 때문에 32자 이상 필수)
+#    값을 --from-literal 에 직접 적으면 명령줄 전체가 셸 히스토리에 남으므로
+#    변수로 받아 넘긴다 (히스토리에는 변수 이름만 남는다)
+echo -n "DB 비밀번호: "; read -s PW;  echo
+echo -n "JWT_SECRET: ";  read -s JWT; echo
+
 kubectl create secret generic app-secret \
-  --from-literal=DB_PASSWORD='<비밀번호>' \
-  --from-literal=JWT_SECRET='<32자 이상>'
+  --from-literal=DB_PASSWORD="$PW" \
+  --from-literal=JWT_SECRET="$JWT"
+
+unset PW JWT
 
 # 5. RDS 주소를 매니페스트에 주입
 #    member.yaml의 <RDS_ENDPOINT>는 생성 전에는 알 수 없는 값이라 여기서 채운다
