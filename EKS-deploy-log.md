@@ -110,10 +110,19 @@ member.yaml과 auth.yaml은 `DB_PASSWORD`와 `JWT_SECRET`을
 매니페스트를 적용하기 전에 먼저 만들어야 한다.
 
 ```
+echo -n "DB 비밀번호: "; read -s PW;  echo
+echo -n "JWT_SECRET: ";  read -s JWT; echo
+
 kubectl create secret generic app-secret \
-  --from-literal=DB_PASSWORD='<RDS 비밀번호>' \
-  --from-literal=JWT_SECRET='<32자 이상 문자열>'
+  --from-literal=DB_PASSWORD="$PW" \
+  --from-literal=JWT_SECRET="$JWT"
+
+unset PW JWT
 ```
+
+값을 `--from-literal`에 직접 적으면 **명령줄 전체가 셸 히스토리에 남는다.**
+Terraform 비밀번호는 `read -s`로 받으면서 이쪽은 평문으로 쳤던 것이 당시의 실수였고,
+기록을 바로잡아 둔다. 히스토리에는 변수 이름만 남는다.
 
 `JWT_SECRET`이 32자 이상이어야 하는 것은 취향이 아니라 제약이다.
 토큰 생성 코드가 `Keys.hmacShaKeyFor(secret.getBytes(UTF_8))`로 HS256 키를 만들기 때문에,
@@ -401,6 +410,16 @@ aws elbv2 describe-load-balancers --query "LoadBalancers[].LoadBalancerName"
 ## 이후 조치
 
 기록은 실습 당일(2026-10-26) 상태 그대로 두고, 이후 고친 내용만 여기에 날짜별로 덧붙인다.
+
+### 2026-11-14 — Secret 생성 명령에서 평문 입력 제거
+
+5단계의 `kubectl create secret` 명령이 `--from-literal`에 값을 직접 적는 방식이었다.
+명령줄 전체가 셸 히스토리에 남기 때문에, Terraform 비밀번호를 `read -s`로 받은 것과
+기준이 어긋나 있었다. 같은 기준을 적용해 변수로 받아 넘기도록 기록을 수정했다.
+
+실습 당시에는 비용 때문에 서둘러 진행하면서 이 부분을 놓쳤다.
+보안 설정은 한 곳만 지켜서는 의미가 없고, 같은 값이 지나가는 모든 경로에
+같은 기준을 적용해야 한다는 것이 이번에 남은 교훈이다.
 
 ### 2026-11-06 — member-service 헬스체크를 actuator로 통일
 
